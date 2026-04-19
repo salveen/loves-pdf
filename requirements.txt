@@ -1,5 +1,0 @@
-pymupdf>=1.23.0
-Pillow>=10.0.0
-typer>=0.9.0
-dash>=2.14.0
-dash-bootstrap-components>=1.5.0
