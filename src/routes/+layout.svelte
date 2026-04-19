@@ -5,7 +5,7 @@
 </script>
 
 <svelte:head>
-	<title>Priva PDF</title>
+	<title>salveen-loves-pdf</title>
 </svelte:head>
 
 {@render children()}

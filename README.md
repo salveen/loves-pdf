@@ -1,4 +1,4 @@
-# 🔒 Priva PDF
+# 🔒 salveen-loves-pdf
 
 > Built with **SvelteKit + TypeScript** — runs entirely in the browser, no backend.
 
@@ -6,9 +6,9 @@ I built this because I wasn't comfortable uploading sensitive documents — pass
 
 Everything runs in your browser. Nothing is sent to a server. Works in airplane mode.
 
-**Merge, split, compress.** That's it.
+🌐 **Live at [salveen-loves-pdf.vercel.app](https://salveen-loves-pdf.vercel.app)**
 
-![Priva PDF](assets/priva_pdf_frontpage.png)
+![salveen-loves-pdf](assets/frontpage.png)
 
 ## Tech stack
 
@@ -17,8 +17,8 @@ Everything runs in your browser. Nothing is sent to a server. Works in airplane 
 ## Run locally
 
 ```bash
-git clone https://github.com/salveen/priva-pdf.git
-cd priva-pdf
+git clone https://github.com/salveen/salveen-loves-pdf.git
+cd salveen-loves-pdf
 npm install
 npm run dev
 ```

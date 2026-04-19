@@ -8,7 +8,7 @@
 
 <div class="main-container">
 	<div class="main-header">
-		<h1>Priva PDF</h1>
+		<h1>salveen-loves-pdf</h1>
 		<p>Private, local PDF tools — your files never leave your browser</p>
 	</div>
 
@@ -41,5 +41,8 @@
 	<div class="footer">
 		<div class="privacy-badge">🔒 100% Private — All processing happens in your browser</div>
 		<p style="margin-top: 1rem; font-size: 0.8rem;">Your files never leave your machine</p>
+		<p style="margin-top: 0.75rem; font-size: 0.8rem; opacity: 0.5;">
+			Don't believe it? Turn on airplane mode and try it yourself.
+		</p>
 	</div>
 </div>
