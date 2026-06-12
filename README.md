@@ -6,7 +6,7 @@ I built this because I wasn't comfortable uploading sensitive documents — pass
 
 Everything runs in your browser. Nothing is sent to a server. Works in airplane mode.
 
-🌐 **Live at [pdfutil.salveendutt.com](https://pdfutil.salveendutt.com)**
+🌐 **Live at [pdfutil.salveendutt.com](https://pdf.salveendutt.com)**
 
 ![pdf util](assets/frontpage.png)
 
