@@ -1,4 +1,4 @@
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, PDFName, PDFRawStream, PDFArray, type PDFDict } from 'pdf-lib';
 
 export async function mergePdfs(files: File[]): Promise<Uint8Array> {
 	const merged = await PDFDocument.create();
@@ -76,26 +76,119 @@ export async function splitEveryN(
 	return results;
 }
 
-export async function compressPdf(
-	file: File,
-	_level: string
-): Promise<Uint8Array> {
-	// pdf-lib doesn't do image recompression, but we can strip metadata,
-	// rebuild the structure, and use object-stream compression.
-	// For real Ghostscript-level compression, a WASM build would be needed.
-	// This still reduces size for many PDFs by cleaning up structure.
-	const bytes = new Uint8Array(await file.arrayBuffer());
-	const doc = await PDFDocument.load(bytes);
+// Per-level JPEG re-encoding settings. LOW is lossless (no image changes).
+const COMPRESSION_LEVELS: Record<string, { quality: number; maxDim: number } | null> = {
+	LOW: null,
+	MEDIUM: { quality: 0.75, maxDim: 2000 },
+	HIGH: { quality: 0.55, maxDim: 1500 },
+	EXTREME: { quality: 0.35, maxDim: 1000 }
+};
 
-	// Strip metadata
+function isDctEncoded(dict: PDFDict): boolean {
+	const filter = dict.get(PDFName.of('Filter'));
+	if (filter === PDFName.of('DCTDecode')) return true;
+	return (
+		filter instanceof PDFArray &&
+		filter.size() === 1 &&
+		filter.get(0) === PDFName.of('DCTDecode')
+	);
+}
+
+async function reencodeJpeg(
+	data: Uint8Array,
+	quality: number,
+	maxDim: number
+): Promise<{ data: Uint8Array; width: number; height: number } | null> {
+	let bitmap: ImageBitmap;
+	try {
+		bitmap = await createImageBitmap(new Blob([data as BlobPart], { type: 'image/jpeg' }));
+	} catch {
+		return null; // browser couldn't decode this JPEG variant
+	}
+	try {
+		const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+		const width = Math.max(1, Math.round(bitmap.width * scale));
+		const height = Math.max(1, Math.round(bitmap.height * scale));
+		let blob: Blob;
+		if (typeof OffscreenCanvas !== 'undefined') {
+			const canvas = new OffscreenCanvas(width, height);
+			const ctx = canvas.getContext('2d');
+			if (!ctx) return null;
+			ctx.drawImage(bitmap, 0, 0, width, height);
+			blob = await canvas.convertToBlob({ type: 'image/jpeg', quality });
+		} else {
+			const canvas = document.createElement('canvas');
+			canvas.width = width;
+			canvas.height = height;
+			const ctx = canvas.getContext('2d');
+			if (!ctx) return null;
+			ctx.drawImage(bitmap, 0, 0, width, height);
+			blob = await new Promise<Blob>((resolve, reject) =>
+				canvas.toBlob(
+					(b) => (b ? resolve(b) : reject(new Error('JPEG encoding failed'))),
+					'image/jpeg',
+					quality
+				)
+			);
+		}
+		return { data: new Uint8Array(await blob.arrayBuffer()), width, height };
+	} finally {
+		bitmap.close();
+	}
+}
+
+async function recompressImages(doc: PDFDocument, quality: number, maxDim: number) {
+	const context = doc.context;
+	for (const [ref, obj] of context.enumerateIndirectObjects()) {
+		if (!(obj instanceof PDFRawStream)) continue;
+		const dict = obj.dict;
+		if (dict.get(PDFName.of('Subtype')) !== PDFName.of('Image')) continue;
+		if (dict.get(PDFName.of('ImageMask'))) continue;
+		if (!isDctEncoded(dict)) continue;
+		try {
+			const reencoded = await reencodeJpeg(obj.contents, quality, maxDim);
+			// only swap in the re-encoded image if it's actually smaller
+			if (!reencoded || reencoded.data.length >= obj.contents.length) continue;
+			const newDict = dict.clone(context);
+			newDict.set(PDFName.of('Width'), context.obj(reencoded.width));
+			newDict.set(PDFName.of('Height'), context.obj(reencoded.height));
+			newDict.set(PDFName.of('Filter'), PDFName.of('DCTDecode'));
+			// canvas always outputs 8-bit RGB JPEGs regardless of the source colorspace
+			newDict.set(PDFName.of('ColorSpace'), PDFName.of('DeviceRGB'));
+			newDict.set(PDFName.of('BitsPerComponent'), context.obj(8));
+			newDict.set(PDFName.of('Length'), context.obj(reencoded.data.length));
+			newDict.delete(PDFName.of('DecodeParms'));
+			newDict.delete(PDFName.of('Decode'));
+			context.assign(ref, PDFRawStream.of(newDict, reencoded.data));
+		} catch {
+			// leave this image untouched rather than failing the whole document
+		}
+	}
+}
+
+export async function compressPdf(file: File, level: string): Promise<Uint8Array> {
+	const bytes = new Uint8Array(await file.arrayBuffer());
+	// updateMetadata: false stops pdf-lib from stamping its own Producer/ModDate
+	const doc = await PDFDocument.load(bytes, { updateMetadata: false });
+
+	const imageOpts = COMPRESSION_LEVELS[level] ?? null;
+	if (imageOpts) {
+		await recompressImages(doc, imageOpts.quality, imageOpts.maxDim);
+	}
+
+	// Strip metadata, including the XMP metadata stream
 	doc.setTitle('');
 	doc.setAuthor('');
 	doc.setSubject('');
 	doc.setKeywords([]);
 	doc.setProducer('');
 	doc.setCreator('');
+	doc.catalog.delete(PDFName.of('Metadata'));
 
-	return doc.save();
+	const out = await doc.save({ useObjectStreams: true });
+
+	// Never hand back something bigger than the input
+	return out.length < bytes.length ? out : bytes;
 }
 
 export function parsePageInput(input: string, maxPage: number): number[] {

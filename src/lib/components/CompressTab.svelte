@@ -11,10 +11,10 @@
 	let dragover = $state(false);
 
 	const descriptions: Record<string, string> = {
-		LOW: 'Minimal compression — structure cleanup only',
-		MEDIUM: 'Balanced — metadata stripped, structure optimized',
-		HIGH: 'Aggressive — maximum structural compression',
-		EXTREME: 'Maximum — all non-essential data removed'
+		LOW: 'Lossless — metadata stripped, structure optimized, images untouched',
+		MEDIUM: 'Balanced — images recompressed at 75% JPEG quality',
+		HIGH: 'Aggressive — images downscaled and recompressed, some quality loss',
+		EXTREME: 'Maximum — heavy image downscaling, visible quality loss'
 	};
 
 	async function handleFile(event: Event) {
