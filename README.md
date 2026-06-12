@@ -1,4 +1,4 @@
-# 🔒 salveen-loves-pdf
+# 🔒 pdf util
 
 > Built with **SvelteKit + TypeScript** — runs entirely in the browser, no backend.
 
@@ -6,9 +6,9 @@ I built this because I wasn't comfortable uploading sensitive documents — pass
 
 Everything runs in your browser. Nothing is sent to a server. Works in airplane mode.
 
-🌐 **Live at [salveen-loves-pdf.vercel.app](https://salveen-loves-pdf.vercel.app)**
+🌐 **Live at [pdfutil.salveendutt.com](https://pdfutil.salveendutt.com)**
 
-![salveen-loves-pdf](assets/frontpage.png)
+![pdf util](assets/frontpage.png)
 
 ## Tech stack
 

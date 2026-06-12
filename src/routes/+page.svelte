@@ -8,7 +8,7 @@
 
 <div class="main-container">
 	<div class="main-header">
-		<h1>salveen-loves-pdf</h1>
+		<h1>pdf util</h1>
 		<p>Private, local PDF tools — your files never leave your browser</p>
 	</div>
 
