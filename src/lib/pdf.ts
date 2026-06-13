@@ -1,4 +1,4 @@
-import { PDFDocument, PDFName, PDFRawStream, PDFArray, type PDFDict } from 'pdf-lib';
+import { PDFDocument, PDFName, PDFNumber, PDFRawStream, PDFArray, type PDFDict } from 'pdf-lib';
 
 export async function mergePdfs(files: File[]): Promise<Uint8Array> {
 	const merged = await PDFDocument.create();
@@ -94,6 +94,52 @@ function isDctEncoded(dict: PDFDict): boolean {
 	);
 }
 
+// Remove the Exif (APP1) segment from a JPEG. createImageBitmap honors the Exif
+// orientation tag and rotates the decoded pixels — but PDF viewers ignore Exif on
+// embedded images and use the raw coded grid. Decoding the rotated pixels would
+// distort the image against the page's transform, so we strip Exif first to get
+// the coded orientation the PDF expects. (The imageOrientation: 'none' option does
+// not suppress this in Chrome.)
+function stripJpegExif(data: Uint8Array): Uint8Array {
+	if (data.length < 4 || data[0] !== 0xff || data[1] !== 0xd8) return data;
+	const keep: Uint8Array[] = [data.subarray(0, 2)]; // SOI
+	let i = 2;
+	let stripped = false;
+	while (i + 4 <= data.length) {
+		if (data[i] !== 0xff) break; // not a marker — bail before scan data
+		const marker = data[i + 1];
+		if (marker === 0xda) {
+			keep.push(data.subarray(i)); // SOS: rest is compressed scan data
+			i = data.length;
+			break;
+		}
+		const len = (data[i + 2] << 8) | data[i + 3]; // segment length incl. these 2 bytes
+		const segEnd = i + 2 + len;
+		if (len < 2 || segEnd > data.length) {
+			keep.push(data.subarray(i)); // malformed — keep the remainder untouched
+			break;
+		}
+		const isExif =
+			marker === 0xe1 &&
+			data[i + 4] === 0x45 && // 'E'
+			data[i + 5] === 0x78 && // 'x'
+			data[i + 6] === 0x69 && // 'i'
+			data[i + 7] === 0x66; // 'f'
+		if (isExif) stripped = true;
+		else keep.push(data.subarray(i, segEnd));
+		i = segEnd;
+	}
+	if (!stripped) return data;
+	const total = keep.reduce((n, k) => n + k.length, 0);
+	const out = new Uint8Array(total);
+	let off = 0;
+	for (const k of keep) {
+		out.set(k, off);
+		off += k.length;
+	}
+	return out;
+}
+
 async function reencodeJpeg(
 	data: Uint8Array,
 	quality: number,
@@ -101,7 +147,8 @@ async function reencodeJpeg(
 ): Promise<{ data: Uint8Array; width: number; height: number } | null> {
 	let bitmap: ImageBitmap;
 	try {
-		bitmap = await createImageBitmap(new Blob([data as BlobPart], { type: 'image/jpeg' }));
+		const jpeg = stripJpegExif(data);
+		bitmap = await createImageBitmap(new Blob([jpeg as BlobPart], { type: 'image/jpeg' }));
 	} catch {
 		return null; // browser couldn't decode this JPEG variant
 	}
@@ -145,10 +192,19 @@ async function recompressImages(doc: PDFDocument, quality: number, maxDim: numbe
 		if (dict.get(PDFName.of('Subtype')) !== PDFName.of('Image')) continue;
 		if (dict.get(PDFName.of('ImageMask'))) continue;
 		if (!isDctEncoded(dict)) continue;
+		const origWidth = dict.get(PDFName.of('Width'));
+		const origHeight = dict.get(PDFName.of('Height'));
+		if (!(origWidth instanceof PDFNumber) || !(origHeight instanceof PDFNumber)) continue;
 		try {
 			const reencoded = await reencodeJpeg(obj.contents, quality, maxDim);
 			// only swap in the re-encoded image if it's actually smaller
 			if (!reencoded || reencoded.data.length >= obj.contents.length) continue;
+			// the re-encoded image must keep the original aspect ratio, otherwise the
+			// page's transform would distort it. If a decoder ever rotates or reshapes
+			// the pixels, skip the swap rather than corrupt the image.
+			const origAspect = origWidth.asNumber() / origHeight.asNumber();
+			const newAspect = reencoded.width / reencoded.height;
+			if (Math.abs(origAspect - newAspect) > 0.01 * origAspect) continue;
 			const newDict = dict.clone(context);
 			newDict.set(PDFName.of('Width'), context.obj(reencoded.width));
 			newDict.set(PDFName.of('Height'), context.obj(reencoded.height));
